@@ -6,6 +6,7 @@ global $ShowedCommonEnv;
 global $InnerEnv;
 global $ShowedInnerEnv;
 global $Base64Env;
+global $timezones;
 
 $Base64Env = [
     //'APIKey', // used in heroku.
