@@ -577,17 +577,17 @@
     function createDplayers(videos) {
         for (i = 0; i < videos.length; i++) {
             console.log(videos[i]);
-            strarry=videos[i].split('.');
-            ext=strarry[strarry.length-1].toLowerCase();
-            sub=videos[i].substr(0, videos[i].length-ext.length) + 'ass';
+            //strarry=videos[i].split('.');
+            //ext=strarry[strarry.length-1].toLowerCase();
+            //sub=videos[i].substr(0, videos[i].length-ext.length) + 'ass';
             new DPlayer({
                 container: document.getElementById('video-a' + i),
                 screenshot: true,
+                //subtitle: {
+                //    url: sub
+                //},
                 video: {
                     url: videos[i]
-                },
-                subtitle: {
-                    url: sub
                 }
             });
         }
