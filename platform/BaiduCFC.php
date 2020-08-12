@@ -117,8 +117,6 @@ function install()
             $html = api_error_msg($response);
             $title = 'Error';
             return message($html, $title, 201);
-        } else {
-            return output($response);
         }
         if (needUpdate()) {
             OnekeyUpate();
@@ -158,7 +156,7 @@ function install()
             $title = 'Error';
             return message($html, $title, 201);
         } else {
-            $html .= $response.'
+            $html .= '
     <form action="?install2" method="post" onsubmit="return notnull(this);">
         <label>'.getconstStr('SetAdminPassword').':<input name="admin" type="password" placeholder="' . getconstStr('EnvironmentsDescription')['admin'] . '" size="' . strlen(getconstStr('EnvironmentsDescription')['admin']) . '"></label><br>
         <input type="submit" value="'.getconstStr('Submit').'">
@@ -230,35 +228,6 @@ language:<br>';
     return message($html, $title, 201);
 }
 
-function post2url($url, $data)
-{
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_POST, 1);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_HEADER, 0);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-    $response = curl_exec($ch);
-    curl_close($ch);
-    //echo $response;
-    return $response;
-}
-
-function ReorganizeDate($arr)
-{
-    $str = '';
-    ksort($arr);
-    foreach ($arr as $k1 => $v1) {
-        $str .= '&' . $k1 . '=' . $v1;
-    }
-    $str = substr($str, 1); // remove first '&'. 去掉第一个&
-    return $str;
-}
-
 function getfunctioninfo($SecretId, $SecretKey)
 {
     $BRN = explode(':', $_SERVER['functionBrn']);
@@ -278,27 +247,6 @@ function getfunctioninfo($SecretId, $SecretKey)
 
     $cfcClient = new CFCClient($CFC_CONFIG);
     return $cfcClient->GetFunctionConfiguration($FunctionName);
-}
-
-function getfunctioncodeurl($function_name, $Region, $Namespace, $SecretId, $SecretKey)
-{
-    //$meth = 'GET';
-    $meth = 'POST';
-    $host = 'scf.tencentcloudapi.com';
-    $tmpdata['Action'] = 'GetFunctionAddress';
-    $tmpdata['FunctionName'] = $function_name;
-    $tmpdata['Namespace'] = $Namespace;
-    $tmpdata['Nonce'] = time();
-    $tmpdata['Region'] = $Region;
-    $tmpdata['SecretId'] = $SecretId;
-    $tmpdata['Timestamp'] = time();
-    $tmpdata['Token'] = '';
-    $tmpdata['Version'] = '2018-04-16';
-    $data = ReorganizeDate($tmpdata);
-    $signStr = base64_encode(hash_hmac('sha1', $meth.$host.'/?'.$data, $SecretKey, true));
-    //echo urlencode($signStr);
-    //return file_get_contents('https://'.$url.'&Signature='.urlencode($signStr));
-    return post2url('https://'.$host, $data.'&Signature='.urlencode($signStr));
 }
 
 function updateEnvironment($Envs, $SecretId, $SecretKey)
@@ -377,101 +325,40 @@ function SetbaseConfig($Envs, $SecretId, $SecretKey)
     return $cfcClient->UpdateFunctionConfiguration($FunctionName, $tmp);
 }
 
-function updateProgram($function_name, $Region, $Namespace, $SecretId, $SecretKey, $source)
+function updateProgram($SecretId, $SecretKey, $source)
 {
-    $secretId = $SecretId;
-    $secretKey = $SecretKey;
-    $host = 'scf.tencentcloudapi.com';
-    $service = "scf";
-    $version = "2018-04-16";
-    $action = "UpdateFunctionCode";
-    $region = $Region;
-    $timestamp = time();
-    $algorithm = "TC3-HMAC-SHA256";
+    $BRN = explode(':', $_SERVER['functionBrn']);
+    $Region = $BRN[3];
+    //$project_id = $BRN[4];
+    $FunctionName = $BRN[6];
+    $host = 'cfc.' . $Region . '.baidubce.com';
 
-    // step 1: build canonical request string
-    $httpRequestMethod = "POST";
-    $canonicalUri = "/";
-    $canonicalQueryString = "";
-    $canonicalHeaders = "content-type:application/json; charset=utf-8\n"."host:".$host."\n";
-    $signedHeaders = "content-type;host";
+    $tmp['ZipFile'] = base64_encode( file_get_contents($source) );
 
-    //$tmpdata['Action'] = 'UpdateFunctionCode';
-    $tmpdata['Code']['ZipFile'] = base64_encode( file_get_contents($source) );
-    $tmpdata['CodeSource'] = 'ZipFile';
-    $tmpdata['FunctionName'] = $function_name;
-    $tmpdata['Handler'] = 'index.main_handler';
-    //$tmpdata['Namespace'] = $Namespace;
-    //$tmpdata['Nonce'] = time();
-    //$tmpdata['Region'] = $Region;
-    //$tmpdata['SecretId'] = $SecretId;
-    //$tmpdata['Timestamp'] = time();
-    //$tmpdata['Token'] = '';
-    //$tmpdata['Version'] = '2018-04-16';
-    $payload = json_encode($tmpdata);
-    //$payload = '{"Limit": 1, "Filters": [{"Values": ["\u672a\u547d\u540d"], "Name": "instance-name"}]}';
-    $hashedRequestPayload = hash("SHA256", $payload);
-    $canonicalRequest = $httpRequestMethod."\n"
-        .$canonicalUri."\n"
-        .$canonicalQueryString."\n"
-        .$canonicalHeaders."\n"
-        .$signedHeaders."\n"
-        .$hashedRequestPayload;
-    //echo $canonicalRequest.PHP_EOL;
+    $CFC_CONFIG =
+        array(
+            'credentials' => array(
+                'accessKeyId' => $SecretId,
+                'secretAccessKey' => $SecretKey,
+            ),
+            'endpoint' => $host,
+        );
 
-    // step 2: build string to sign
-    $date = gmdate("Y-m-d", $timestamp);
-    $credentialScope = $date."/".$service."/tc3_request";
-    $hashedCanonicalRequest = hash("SHA256", $canonicalRequest);
-    $stringToSign = $algorithm."\n"
-        .$timestamp."\n"
-        .$credentialScope."\n"
-        .$hashedCanonicalRequest;
-    //echo $stringToSign.PHP_EOL;
+    $cfcClient = new CFCClient($CFC_CONFIG);
 
-    // step 3: sign string
-    $secretDate = hash_hmac("SHA256", $date, "TC3".$secretKey, true);
-    $secretService = hash_hmac("SHA256", $service, $secretDate, true);
-    $secretSigning = hash_hmac("SHA256", "tc3_request", $secretService, true);
-    $signature = hash_hmac("SHA256", $stringToSign, $secretSigning);
-    //echo $signature.PHP_EOL;
-
-    // step 4: build authorization
-    $authorization = $algorithm
-        ." Credential=".$secretId."/".$credentialScope
-        .", SignedHeaders=content-type;host, Signature=".$signature;
-    //echo $authorization.PHP_EOL;
-
-    //$curl = "curl -X POST https://".$host
-    //    .' -H "Authorization: '.$authorization.'"'
-    //    .' -H "Content-Type: application/json; charset=utf-8"'
-    //    .' -H "Host: '.$host.'"'
-    //    .' -H "X-TC-Action: '.$action.'"'
-    //    .' -H "X-TC-Timestamp: '.$timestamp.'"'
-    //    .' -H "X-TC-Version: '.$version.'"'
-    //    .' -H "X-TC-Region: '.$region.'"'
-    //    ." -d '".$payload."'";
-    //error_log( $curl.PHP_EOL );
-    //return '{"response": {"Error": {"Message":"' . $curl . '"}}}';
-    $headers['Authorization'] = $authorization;
-    $headers['Content-Type'] = 'application/json; charset=utf-8';
-    $headers['Host'] = $host;
-    $headers['X-TC-Action'] = $action;
-    $headers['X-TC-Timestamp'] = $timestamp;
-    $headers['X-TC-Version'] = $version;
-    $headers['X-TC-Region'] = $region;
-    return curl_request('https://'.$host, $payload, $headers)['body'];
+    return $cfcClient->UpdateFunctionCode($FunctionName, $tmp);
 }
 
 function api_error($response)
 {
-    return 0;
+    return isset($response['code']);
+    return !(isset($response['FunctionBrn']) && $response['FunctionBrn'] == $_SERVER['functionBrn']);
 }
 
 function api_error_msg($response)
 {
-    return $response['Error']['Code'] . '<br>
-' . $response['Error']['Message'] . '<br><br>
+    return $response['code'] . '<br>
+' . $response['message'] . '<br><br>
 function_name:' . $_SERVER['function_name'] . '<br>
 Region:' . $_SERVER['Region'] . '<br>
 namespace:' . $_SERVER['namespace'] . '<br>
@@ -480,8 +367,8 @@ namespace:' . $_SERVER['namespace'] . '<br>
 
 function setConfigResponse($response)
 {
-    return $response;
-    return json_decode( $response, true )['Response'];
+    //return $response;
+    return json_decode( $response, true );
 }
 
 function OnekeyUpate($auth = 'qkqpttgf', $project = 'OneManager-php', $branch = 'master')
@@ -506,7 +393,7 @@ function OnekeyUpate($auth = 'qkqpttgf', $project = 'OneManager-php', $branch = 
         }
     }
     // 放入配置文件
-    file_put_contents($outPath . '/config.php', file_get_contents(__DIR__.'/../config.php'));
+    //file_put_contents($outPath . '/config.php', file_get_contents(__DIR__.'/../config.php'));
 
     // 将目录中文件打包成zip
     //$zip=new ZipArchive();
@@ -516,7 +403,7 @@ function OnekeyUpate($auth = 'qkqpttgf', $project = 'OneManager-php', $branch = 
     //    $zip->close(); //关闭处理的zip文件
     //}
 
-    return updateProgram($_SERVER['function_name'], $_SERVER['Region'], $_SERVER['namespace'], getConfig('SecretId'), getConfig('SecretKey'), $source);
+    return updateProgram(getConfig('SecretId'), getConfig('SecretKey'), $source);
 }
 
 function addFileToZip($zip, $rootpath, $path = '')
@@ -613,6 +500,19 @@ class CFCClient extends BceBaseClient
     function UpdateFunctionConfiguration($functionName, array $event, $qualifier = '$LATEST', $invocationType = 'RequestResponse', $logType = 'None')
     {
         $path = '/v1/functions/' . $functionName . '/configuration';
+        $body = json_encode($event, JSON_FORCE_OBJECT);
+        $params = [
+            'InvocationType' => $invocationType,
+            'LogType' => $logType,
+            'Qualifier' => $qualifier,
+        ];
+        $response = $this->httpClient->sendRequest($this->config, 'PUT', $path, $body, [], $params, $this->signer);
+        return $response['body'];
+    }
+
+    function UpdateFunctionCode($functionName, array $event, $qualifier = '$LATEST', $invocationType = 'RequestResponse', $logType = 'None')
+    {
+        $path = '/v1/functions/' . $functionName . '/code';
         $body = json_encode($event, JSON_FORCE_OBJECT);
         $params = [
             'InvocationType' => $invocationType,
