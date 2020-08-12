@@ -351,7 +351,7 @@ function updateProgram($SecretId, $SecretKey, $source)
 
 function api_error($response)
 {
-    return isset($response['code']);
+    //return isset($response['code']);
     return !(isset($response['FunctionBrn']) && $response['FunctionBrn'] == $_SERVER['functionBrn']);
 }
 
