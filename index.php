@@ -124,10 +124,10 @@ function handler($event, $context)
         //return json_encode(output($html), JSON_FORCE_OBJECT);
 
         printInput($event, $context);
-        //unset($_POST);
-        //unset($_GET);
-        //unset($_COOKIE);
-        //unset($_SERVER);
+        unset($_POST);
+        unset($_GET);
+        unset($_COOKIE);
+        unset($_SERVER);
         GetGlobalVariable($event);
         //echo '<pre>'. json_encode($_COOKIE, JSON_PRETTY_PRINT).'</pre>';
         $path = GetPathSetting($event, $context);
