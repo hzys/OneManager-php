@@ -27,8 +27,8 @@ function GetGlobalVariable($event)
         $_COOKIE[urldecode(substr($cookievalues,0,$pos))]=urldecode(substr($cookievalues,$pos+1));
     }
     $_SERVER['HTTP_USER_AGENT'] = $event['headers']['User-Agent'];
-    $_SERVER['HTTP_TRANSLATE']==$event['headers']['translate'];//'f'
-    $_SERVER['BCE_CFC_RUNTIME_NAME']=='php7';
+    $_SERVER['HTTP_TRANSLATE'] = $event['headers']['translate'];//'f'
+    $_SERVER['BCE_CFC_RUNTIME_NAME'] = 'php7';
 }
 
 function GetPathSetting($event, $context)
@@ -228,40 +228,58 @@ language:<br>';
     return message($html, $title, 201);
 }
 
-function getfunctioninfo($SecretId, $SecretKey)
+function CFCAPIv1($Brn, $AccessKey, $SecretKey, $Method, $End, $data = '')
 {
-    $BRN = explode(':', $_SERVER['functionBrn']);
+    $BRN = explode(':', $Brn);
     $Region = $BRN[3];
     //$project_id = $BRN[4];
     $FunctionName = $BRN[6];
     $host = 'cfc.' . $Region . '.baidubce.com';
-
-    // bce-auth-v1/{accessKeyId}/{timestamp}/{expirationPeriodInSeconds }/{signedHeaders}/{signature}
     $timestamp = date('Y-m-d\TH:i:s\Z');
-    $authStringPrefix = 'bce-auth-v1/' . $SecretId . '/' . $timestamp . '/1800' ;
-    // CanonicalRequest = HTTP Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n" + CanonicalHeaders
-    $Method = 'GET';
-    $path = '/v1/functions/' . $FunctionName . '/configuration';
+    $authStringPrefix = 'bce-auth-v1/' . $AccessKey . '/' . $timestamp . '/1800' ;
+    $path = '/v1/functions/' . $FunctionName . '/' . $End;
     $CanonicalURI = spurlencode($path, '/');
     $CanonicalQueryString = '';
-    //$CanonicalHeaders = '';
     $CanonicalHeaders = 'host:' . $host;
     $CanonicalRequest = $Method . "\n" . $CanonicalURI . "\n" . $CanonicalQueryString . "\n" . $CanonicalHeaders;
-
     $SigningKey = hash_hmac('sha256', $authStringPrefix, $SecretKey);
     $Signature = hash_hmac('sha256', $CanonicalRequest, $SigningKey);
     $authorization = $authStringPrefix . '/host/' . $Signature;
-    return curl_request('https://' . $host . $path, false, [ 'Authorization' => $authorization, 'Content-type' => '', 'Accept' => '' ])['body'];
+
+    $p = 0;
+    while ($response['stat']==0 && $p<3) {
+        $response = curl(
+            $Method,
+            'https://' . $host . $path,
+            $data,
+            [
+                'Authorization' => $authorization,
+                'Content-type' => 'application/json'
+            ]
+        );
+        $p++;
+    }
+
+    if ($response['stat']==0) {
+        $tmp['code'] = 'Network Error';
+        $tmp['message'] = 'Can not connect ' . $host;
+        return json_encode($tmp);
+    }
+    if ($response['stat']==400) {
+        $tmp = json_decode($response['body'], true);
+        $tmp['message'] .= '__' . $timestamp . '__';
+        return json_encode($tmp);
+    }
+    return $response['body'];
+}
+
+function getfunctioninfo($SecretId, $SecretKey)
+{
+    return CFCAPIv1($_SERVER['functionBrn'], $SecretId, $SecretKey, 'GET', 'configuration');
 }
 
 function updateEnvironment($Envs, $SecretId, $SecretKey)
 {
-    $BRN = explode(':', $_SERVER['functionBrn']);
-    $Region = $BRN[3];
-    //$project_id = $BRN[4];
-    $FunctionName = $BRN[6];
-    $host = 'cfc.' . $Region . '.baidubce.com';
-
     $FunctionConfig = json_decode(getfunctioninfo($SecretId, $SecretKey), true);
     $tmp_env = $FunctionConfig['Environment']['Variables'];
     foreach ($Envs as $key1 => $value1) {
@@ -272,33 +290,12 @@ function updateEnvironment($Envs, $SecretId, $SecretKey)
 
     $tmp['Environment']['Variables'] = $tmp_env;
     $data = json_encode($tmp);
-    
-    // bce-auth-v1/{accessKeyId}/{timestamp}/{expirationPeriodInSeconds }/{signedHeaders}/{signature}
-    $timestamp = date('Y-m-d\TH:i:s\Z');
-    $authStringPrefix = 'bce-auth-v1/' . $SecretId . '/' . $timestamp . '/1800' ;
-    // CanonicalRequest = HTTP Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n" + CanonicalHeaders
-    $Method = 'PUT';
-    $path = '/v1/functions/' . $FunctionName . '/configuration';
-    $CanonicalURI = spurlencode($path, '/');
-    $CanonicalQueryString = '';
-    $CanonicalHeaders = 'host:' . $host;
-    $CanonicalRequest = $Method . "\n" . $CanonicalURI . "\n" . $CanonicalQueryString . "\n" . $CanonicalHeaders;
 
-    $SigningKey = hash_hmac('sha256', $authStringPrefix, $SecretKey);
-    $Signature = hash_hmac('sha256', $CanonicalRequest, $SigningKey);
-    $authorization = $authStringPrefix . '/host/' . $Signature;
-
-    return curl($Method, 'https://' . $host . $path, $data, [ 'Authorization' => $authorization, 'Content-type' => 'application/json' ])['body'];
+    return CFCAPIv1($_SERVER['functionBrn'], $SecretId, $SecretKey, 'PUT', 'configuration', $data);
 }
 
 function SetbaseConfig($Envs, $SecretId, $SecretKey)
 {
-    $BRN = explode(':', $_SERVER['functionBrn']);
-    $Region = $BRN[3];
-    //$project_id = $BRN[4];
-    $FunctionName = $BRN[6];
-    $host = 'cfc.' . $Region . '.baidubce.com';
-
     $FunctionConfig = json_decode(getfunctioninfo($SecretId, $SecretKey), true);
     $tmp_env = $FunctionConfig['Environment']['Variables'];
     foreach ($Envs as $key1 => $value1) {
@@ -311,58 +308,15 @@ function SetbaseConfig($Envs, $SecretId, $SecretKey)
     $tmp['Description'] = 'Onedrive index and manager in Baidu CFC.';
     $tmp['Environment']['Variables'] = $tmp_env;
     $data = json_encode($tmp);
-    
-    // bce-auth-v1/{accessKeyId}/{timestamp}/{expirationPeriodInSeconds }/{signedHeaders}/{signature}
-    $timestamp = date('Y-m-d\TH:i:s\Z');
-    $authStringPrefix = 'bce-auth-v1/' . $SecretId . '/' . $timestamp . '/1800' ;
-    // CanonicalRequest = HTTP Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n" + CanonicalHeaders
-    $Method = 'PUT';
-    $path = '/v1/functions/' . $FunctionName . '/configuration';
-    $CanonicalURI = spurlencode($path, '/');
-    $CanonicalQueryString = '';
-    //$CanonicalHeaders = urlencode('content-length:' . strlen($data)) . "\n";
-    //$CanonicalHeaders .= urlencode('content-md5:' . base64_encode(md5($data, true))) . "\n";
-    //$CanonicalHeaders .= urlencode('content-type:application/json') . "\n";
-    $CanonicalHeaders .= 'host:' . $host;
-    $CanonicalRequest = $Method . "\n" . $CanonicalURI . "\n" . $CanonicalQueryString . "\n" . $CanonicalHeaders;
 
-    $SigningKey = hash_hmac('sha256', $authStringPrefix, $SecretKey);
-    $Signature = hash_hmac('sha256', $CanonicalRequest, $SigningKey);
-    $authorization = $authStringPrefix . '/host/' . $Signature;
-
-    return curl($Method, 'https://' . $host . $path, $data, [ 'Authorization' => $authorization, 'Content-type' => 'application/json' ])['body'];
-    //return curl_request('https://' . $host . $path, $data, [ 'Authorization' => $authorization, 'Content-type' => 'application/json', 'Accept' => '' ])['body'];
-
- 
+    return CFCAPIv1($_SERVER['functionBrn'], $SecretId, $SecretKey, 'PUT', 'configuration', $data);
 }
 
 function updateProgram($SecretId, $SecretKey, $source)
 {
-    $BRN = explode(':', $_SERVER['functionBrn']);
-    $Region = $BRN[3];
-    //$project_id = $BRN[4];
-    $FunctionName = $BRN[6];
-    $host = 'cfc.' . $Region . '.baidubce.com';
-
     $tmp['ZipFile'] = base64_encode( file_get_contents($source) );
     $data = json_encode($tmp);
-    
-    // bce-auth-v1/{accessKeyId}/{timestamp}/{expirationPeriodInSeconds }/{signedHeaders}/{signature}
-    $timestamp = date('Y-m-d\TH:i:s\Z');
-    $authStringPrefix = 'bce-auth-v1/' . $SecretId . '/' . $timestamp . '/1800' ;
-    // CanonicalRequest = HTTP Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n" + CanonicalHeaders
-    $Method = 'PUT';
-    $path = '/v1/functions/' . $FunctionName . '/code';
-    $CanonicalURI = spurlencode($path, '/');
-    $CanonicalQueryString = '';
-    $CanonicalHeaders = 'host:' . $host;
-    $CanonicalRequest = $Method . "\n" . $CanonicalURI . "\n" . $CanonicalQueryString . "\n" . $CanonicalHeaders;
-
-    $SigningKey = hash_hmac('sha256', $authStringPrefix, $SecretKey);
-    $Signature = hash_hmac('sha256', $CanonicalRequest, $SigningKey);
-    $authorization = $authStringPrefix . '/host/' . $Signature;
-
-    return curl($Method, 'https://' . $host . $path, $data, [ 'Authorization' => $authorization, 'Content-type' => 'application/json' ])['body'];
+    return CFCAPIv1($_SERVER['functionBrn'], $SecretId, $SecretKey, 'PUT', 'code', $data);
 }
 
 function api_error($response)
