@@ -15,8 +15,8 @@ if (isset($_SERVER['USER'])&&$_SERVER['USER']==='qcloud') {
     //else include 'platform/HuaweiFG_env.php';
     echo 'FG' . PHP_EOL;
 } elseif ($_SERVER['BCE_CFC_RUNTIME_NAME']=='php7') {
-    set_include_path(get_include_path() . PATH_SEPARATOR . '/opt/php');
-    include 'BaiduBce.phar';
+    //set_include_path(get_include_path() . PATH_SEPARATOR . '/opt/php');
+    //include 'BaiduBce.phar';
     include 'platform/BaiduCFC.php';
 } elseif (isset($_SERVER['HEROKU_APP_DIR'])&&$_SERVER['HEROKU_APP_DIR']==='/app') {
     include 'platform/Heroku.php';
