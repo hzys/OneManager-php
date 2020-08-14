@@ -236,17 +236,22 @@ function getfunctioninfo($SecretId, $SecretKey)
     $FunctionName = $BRN[6];
     $host = 'cfc.' . $Region . '.baidubce.com';
 
-    $CFC_CONFIG =
-        array(
-            'credentials' => array(
-                'accessKeyId' => $SecretId,
-                'secretAccessKey' => $SecretKey,
-            ),
-            'endpoint' => $host,
-        );
+    // bce-auth-v1/{accessKeyId}/{timestamp}/{expirationPeriodInSeconds }/{signedHeaders}/{signature}
+    $timestamp = date('Y-m-d\TH:i:s\Z');
+    $authStringPrefix = 'bce-auth-v1/' . $SecretId . '/' . $timestamp . '/1800' ;
+    // CanonicalRequest = HTTP Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n" + CanonicalHeaders
+    $Method = 'GET';
+    $path = '/v1/functions/' . $FunctionName . '/configuration';
+    $CanonicalURI = spurlencode($path, '/');
+    $CanonicalQueryString = '';
+    //$CanonicalHeaders = '';
+    $CanonicalHeaders = 'host:' . $host;
+    $CanonicalRequest = $Method . "\n" . $CanonicalURI . "\n" . $CanonicalQueryString . "\n" . $CanonicalHeaders;
 
-    $cfcClient = new CFCClient($CFC_CONFIG);
-    return $cfcClient->GetFunctionConfiguration($FunctionName);
+    $SigningKey = hash_hmac('sha256', $authStringPrefix, $SecretKey);
+    $Signature = hash_hmac('sha256', $CanonicalRequest, $SigningKey);
+    $authorization = $authStringPrefix . '/host/' . $Signature;
+    return curl_request('https://' . $host . $path, false, [ 'Authorization' => $authorization, 'Content-type' => '', 'Accept' => '' ])['body'];
 }
 
 function updateEnvironment($Envs, $SecretId, $SecretKey)
@@ -257,15 +262,6 @@ function updateEnvironment($Envs, $SecretId, $SecretKey)
     $FunctionName = $BRN[6];
     $host = 'cfc.' . $Region . '.baidubce.com';
 
-    $CFC_CONFIG =
-        array(
-            'credentials' => array(
-                'accessKeyId' => $SecretId,
-                'secretAccessKey' => $SecretKey,
-            ),
-            'endpoint' => $host,
-        );
-
     $FunctionConfig = json_decode(getfunctioninfo($SecretId, $SecretKey), true);
     $tmp_env = $FunctionConfig['Environment']['Variables'];
     foreach ($Envs as $key1 => $value1) {
@@ -273,11 +269,26 @@ function updateEnvironment($Envs, $SecretId, $SecretKey)
     }
     $tmp_env = array_filter($tmp_env, 'array_value_isnot_null'); // remove null. 清除空值
     ksort($tmp_env);
-    //$FunctionConfig['Environment']['Variables'] = $tmp_env;
+
     $tmp['Environment']['Variables'] = $tmp_env;
-    $cfcClient = new CFCClient($CFC_CONFIG);
-    //return $cfcClient->UpdateFunctionConfiguration($FunctionName, $FunctionConfig);
-    return $cfcClient->UpdateFunctionConfiguration($FunctionName, $tmp);
+    $data = json_encode($tmp);
+    
+    // bce-auth-v1/{accessKeyId}/{timestamp}/{expirationPeriodInSeconds }/{signedHeaders}/{signature}
+    $timestamp = date('Y-m-d\TH:i:s\Z');
+    $authStringPrefix = 'bce-auth-v1/' . $SecretId . '/' . $timestamp . '/1800' ;
+    // CanonicalRequest = HTTP Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n" + CanonicalHeaders
+    $Method = 'PUT';
+    $path = '/v1/functions/' . $FunctionName . '/configuration';
+    $CanonicalURI = spurlencode($path, '/');
+    $CanonicalQueryString = '';
+    $CanonicalHeaders = 'host:' . $host;
+    $CanonicalRequest = $Method . "\n" . $CanonicalURI . "\n" . $CanonicalQueryString . "\n" . $CanonicalHeaders;
+
+    $SigningKey = hash_hmac('sha256', $authStringPrefix, $SecretKey);
+    $Signature = hash_hmac('sha256', $CanonicalRequest, $SigningKey);
+    $authorization = $authStringPrefix . '/host/' . $Signature;
+
+    return curl($Method, 'https://' . $host . $path, $data, [ 'Authorization' => $authorization, 'Content-type' => 'application/json' ])['body'];
 }
 
 function SetbaseConfig($Envs, $SecretId, $SecretKey)
@@ -288,15 +299,6 @@ function SetbaseConfig($Envs, $SecretId, $SecretKey)
     $FunctionName = $BRN[6];
     $host = 'cfc.' . $Region . '.baidubce.com';
 
-    $CFC_CONFIG =
-        array(
-            'credentials' => array(
-                'accessKeyId' => $SecretId,
-                'secretAccessKey' => $SecretKey,
-            ),
-            'endpoint' => $host,
-        );
-
     $FunctionConfig = json_decode(getfunctioninfo($SecretId, $SecretKey), true);
     $tmp_env = $FunctionConfig['Environment']['Variables'];
     foreach ($Envs as $key1 => $value1) {
@@ -305,24 +307,33 @@ function SetbaseConfig($Envs, $SecretId, $SecretKey)
     $tmp_env = array_filter($tmp_env, 'array_value_isnot_null'); // remove null. 清除空值
     ksort($tmp_env);
 
-    $FunctionConfig['Environment']['Variables'] = $tmp_env;
-    $FunctionConfig['Timeout'] = 30;
-    $FunctionConfig['Description'] = 'Onedrive index and manager in Baidu CFC.';
-
     $tmp['Timeout'] = 30;
     $tmp['Description'] = 'Onedrive index and manager in Baidu CFC.';
     $tmp['Environment']['Variables'] = $tmp_env;
-    /*$tmp['Layers'][0] = array(
-        "Brn" => "brn:bce:cfc:bj:1a2cbf55b97ac8a7c760c4177db4e17d:layer:bce-php-sdk:1",
-        "CodeSize" => 2359365,
-        "Description" => "0.9.8",
-        "Version" => 1,
-        "LayerName" => "bce-php-sdk"
-    );*/
-    //return json_encode($FunctionConfig);
-    $cfcClient = new CFCClient($CFC_CONFIG);
-    //return $cfcClient->UpdateFunctionConfiguration($FunctionName, $FunctionConfig);
-    return $cfcClient->UpdateFunctionConfiguration($FunctionName, $tmp);
+    $data = json_encode($tmp);
+    
+    // bce-auth-v1/{accessKeyId}/{timestamp}/{expirationPeriodInSeconds }/{signedHeaders}/{signature}
+    $timestamp = date('Y-m-d\TH:i:s\Z');
+    $authStringPrefix = 'bce-auth-v1/' . $SecretId . '/' . $timestamp . '/1800' ;
+    // CanonicalRequest = HTTP Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n" + CanonicalHeaders
+    $Method = 'PUT';
+    $path = '/v1/functions/' . $FunctionName . '/configuration';
+    $CanonicalURI = spurlencode($path, '/');
+    $CanonicalQueryString = '';
+    //$CanonicalHeaders = urlencode('content-length:' . strlen($data)) . "\n";
+    //$CanonicalHeaders .= urlencode('content-md5:' . base64_encode(md5($data, true))) . "\n";
+    //$CanonicalHeaders .= urlencode('content-type:application/json') . "\n";
+    $CanonicalHeaders .= 'host:' . $host;
+    $CanonicalRequest = $Method . "\n" . $CanonicalURI . "\n" . $CanonicalQueryString . "\n" . $CanonicalHeaders;
+
+    $SigningKey = hash_hmac('sha256', $authStringPrefix, $SecretKey);
+    $Signature = hash_hmac('sha256', $CanonicalRequest, $SigningKey);
+    $authorization = $authStringPrefix . '/host/' . $Signature;
+
+    return curl($Method, 'https://' . $host . $path, $data, [ 'Authorization' => $authorization, 'Content-type' => 'application/json' ])['body'];
+    //return curl_request('https://' . $host . $path, $data, [ 'Authorization' => $authorization, 'Content-type' => 'application/json', 'Accept' => '' ])['body'];
+
+ 
 }
 
 function updateProgram($SecretId, $SecretKey, $source)
@@ -334,19 +345,24 @@ function updateProgram($SecretId, $SecretKey, $source)
     $host = 'cfc.' . $Region . '.baidubce.com';
 
     $tmp['ZipFile'] = base64_encode( file_get_contents($source) );
+    $data = json_encode($tmp);
+    
+    // bce-auth-v1/{accessKeyId}/{timestamp}/{expirationPeriodInSeconds }/{signedHeaders}/{signature}
+    $timestamp = date('Y-m-d\TH:i:s\Z');
+    $authStringPrefix = 'bce-auth-v1/' . $SecretId . '/' . $timestamp . '/1800' ;
+    // CanonicalRequest = HTTP Method + "\n" + CanonicalURI + "\n" + CanonicalQueryString + "\n" + CanonicalHeaders
+    $Method = 'PUT';
+    $path = '/v1/functions/' . $FunctionName . '/code';
+    $CanonicalURI = spurlencode($path, '/');
+    $CanonicalQueryString = '';
+    $CanonicalHeaders = 'host:' . $host;
+    $CanonicalRequest = $Method . "\n" . $CanonicalURI . "\n" . $CanonicalQueryString . "\n" . $CanonicalHeaders;
 
-    $CFC_CONFIG =
-        array(
-            'credentials' => array(
-                'accessKeyId' => $SecretId,
-                'secretAccessKey' => $SecretKey,
-            ),
-            'endpoint' => $host,
-        );
+    $SigningKey = hash_hmac('sha256', $authStringPrefix, $SecretKey);
+    $Signature = hash_hmac('sha256', $CanonicalRequest, $SigningKey);
+    $authorization = $authStringPrefix . '/host/' . $Signature;
 
-    $cfcClient = new CFCClient($CFC_CONFIG);
-
-    return $cfcClient->UpdateFunctionCode($FunctionName, $tmp);
+    return curl($Method, 'https://' . $host . $path, $data, [ 'Authorization' => $authorization, 'Content-type' => 'application/json' ])['body'];
 }
 
 function api_error($response)
@@ -357,11 +373,10 @@ function api_error($response)
 
 function api_error_msg($response)
 {
+    //return var_dump($response);
     return $response['code'] . '<br>
 ' . $response['message'] . '<br><br>
-function_name:' . $_SERVER['function_name'] . '<br>
-Region:' . $_SERVER['Region'] . '<br>
-namespace:' . $_SERVER['namespace'] . '<br>
+BRN:' . $_SERVER['functionBrn'] . '<br>
 <button onclick="location.href = location.href;">'.getconstStr('Refresh').'</button>';
 }
 
@@ -428,98 +443,3 @@ function addFileToZip($zip, $rootpath, $path = '')
     @closedir($path);
 }
 
-
-
-
-use BaiduBce\Auth\BceV1Signer;
-use BaiduBce\Auth\SignerInterface;
-use BaiduBce\BceBaseClient;
-use BaiduBce\Http\BceHttpClient;
-
-class CFCClient extends BceBaseClient
-{
-
-    /**
-     * @var SignerInterface
-     */
-    private $signer;
-    /**
-     * @var BceHttpClient
-     */
-    private $httpClient;
-
-    /**
-     * The BosClient constructor
-     *
-     * @param array $config The client configuration
-     */
-    function __construct(array $config)
-    {
-        parent::__construct($config, 'cfc');
-        $this->signer = new BceV1Signer();
-        $this->httpClient = new BceHttpClient();
-    }
-
-    /**
-     * @param string $functionName
-     * @param array $event
-     * @param string $qualifier
-     * @param string $invocationType
-     * @param string $logType
-     * @return mixed
-     * @throws
-     *
-     * 这里的invoke接口封装非常简陋，没有做任何参数检查和异常处理
-     */
-    function invoke($functionName, array $event, $qualifier = '$LATEST', $invocationType = 'RequestResponse', $logType = 'None')
-    {
-        $path = '/v1/functions/' . $functionName . '/invocations';
-        $body = json_encode($event, JSON_FORCE_OBJECT);
-        $params = [
-            'InvocationType' => $invocationType,
-            'LogType' => $logType,
-            'Qualifier' => $qualifier,
-        ];
-        $response = $this->httpClient->sendRequest($this->config, 'POST', $path, $body, [], $params, $this->signer);
-        return $response['body'];
-    }
-
-    function GetFunctionConfiguration($functionName, $qualifier = '$LATEST', $invocationType = 'RequestResponse', $logType = 'None')
-    {
-        $path = '/v1/functions/' . $functionName . '/configuration';
-        $body = '';
-        $params = [
-            'InvocationType' => $invocationType,
-            'LogType' => $logType,
-            'Qualifier' => $qualifier,
-        ];
-        $response = $this->httpClient->sendRequest($this->config, 'GET', $path, $body, [], $params, $this->signer);
-        return $response['body'];
-    }
-
-    function UpdateFunctionConfiguration($functionName, array $event, $qualifier = '$LATEST', $invocationType = 'RequestResponse', $logType = 'None')
-    {
-        $path = '/v1/functions/' . $functionName . '/configuration';
-        $body = json_encode($event, JSON_FORCE_OBJECT);
-        $params = [
-            'InvocationType' => $invocationType,
-            'LogType' => $logType,
-            'Qualifier' => $qualifier,
-        ];
-        $response = $this->httpClient->sendRequest($this->config, 'PUT', $path, $body, [], $params, $this->signer);
-        return $response['body'];
-    }
-
-    function UpdateFunctionCode($functionName, array $event, $qualifier = '$LATEST', $invocationType = 'RequestResponse', $logType = 'None')
-    {
-        $path = '/v1/functions/' . $functionName . '/code';
-        $body = json_encode($event, JSON_FORCE_OBJECT);
-        $params = [
-            'InvocationType' => $invocationType,
-            'LogType' => $logType,
-            'Qualifier' => $qualifier,
-        ];
-        $response = $this->httpClient->sendRequest($this->config, 'PUT', $path, $body, [], $params, $this->signer);
-        return $response['body'];
-    }
-}
