@@ -235,7 +235,9 @@ function CFCAPIv1($Brn, $AccessKey, $SecretKey, $Method, $End, $data = '')
     //$project_id = $BRN[4];
     $FunctionName = $BRN[6];
     $host = 'cfc.' . $Region . '.baidubce.com';
+    date_default_timezone_set('UTC'); // unset last timezone setting
     $timestamp = date('Y-m-d\TH:i:s\Z');
+    //date_default_timezone_set(get_timezone($_SERVER['timezone']));
     $authStringPrefix = 'bce-auth-v1/' . $AccessKey . '/' . $timestamp . '/1800' ;
     $path = '/v1/functions/' . $FunctionName . '/' . $End;
     $CanonicalURI = spurlencode($path, '/');
@@ -265,9 +267,9 @@ function CFCAPIv1($Brn, $AccessKey, $SecretKey, $Method, $End, $data = '')
         $tmp['message'] = 'Can not connect ' . $host;
         return json_encode($tmp);
     }
-    if ($response['stat']==400) {
+    if ($response['stat']!=200) {
         $tmp = json_decode($response['body'], true);
-        $tmp['message'] .= '__' . $timestamp . '__';
+        $tmp['message'] .= '<br>' . $response['stat'] . '<br>' . $timestamp . PHP_EOL;
         return json_encode($tmp);
     }
     return $response['body'];
@@ -330,7 +332,7 @@ function api_error_msg($response)
     //return var_dump($response);
     return $response['code'] . '<br>
 ' . $response['message'] . '<br><br>
-BRN:' . $_SERVER['functionBrn'] . '<br>
+BRN: ' . $_SERVER['functionBrn'] . '<br>
 <button onclick="location.href = location.href;">'.getconstStr('Refresh').'</button>';
 }
 
