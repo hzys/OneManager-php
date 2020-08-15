@@ -230,7 +230,13 @@ language:<br>';
 
 function CFCAPIv1($Brn, $AccessKey, $SecretKey, $Method, $End, $data = '')
 {
+    // brn:bce:cfc:bj:c094b1ca1XXXXXXXXb8dea6ab482:function:fdsa:$LATEST
     $BRN = explode(':', $Brn);
+    if ( !($BRN[0]=='brn' && $BRN[1]=='bce' && $BRN[2]=='cfc') ) {
+        $tmp['code'] = 'BRN Error';
+        $tmp['message'] = 'The BRN expect start with "brn:bce:cfc:", given: ' . $Brn . ' .';
+        return json_encode($tmp);
+    }
     $Region = $BRN[3];
     //$project_id = $BRN[4];
     $FunctionName = $BRN[6];
@@ -329,9 +335,10 @@ function api_error($response)
 
 function api_error_msg($response)
 {
-    //return var_dump($response);
-    return $response['code'] . '<br>
-' . $response['message'] . '<br><br>
+    if (isset($response['code'])) $html = $response['code'] . '<br>
+' . $response['message'];
+    else $html = var_dump($response);
+    return $html . '<br><br>
 BRN: ' . $_SERVER['functionBrn'] . '<br>
 <button onclick="location.href = location.href;">'.getconstStr('Refresh').'</button>';
 }
